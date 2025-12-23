@@ -1,0 +1,3 @@
+@echo off
+echo Starting Economic Letter Insights Application...
+uv run python run.py

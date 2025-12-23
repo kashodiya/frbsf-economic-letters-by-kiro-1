@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Economic Letter Insights</title>
+    
+    <!-- Vuetify CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.3.67/css/materialdesignicons.min.css" rel="stylesheet">
+    
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+        .letter-card {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .letter-card:hover {
+            transform: translateY(-4px);
+        }
+        .question-card {
+            margin-bottom: 16px;
+        }
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content h1 {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 0.67em 0;
+        }
+        .markdown-content h2 {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 0.75em 0;
+        }
+        .markdown-content h3 {
+            font-size: 1.17em;
+            font-weight: bold;
+            margin: 0.83em 0;
+        }
+        .markdown-content p {
+            margin: 1em 0;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin: 1em 0;
+            padding-left: 2em;
+        }
+        .markdown-content li {
+            margin: 0.5em 0;
+        }
+        .markdown-content code {
+            background-color: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .markdown-content pre {
+            background-color: #f5f5f5;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #ddd;
+            padding-left: 16px;
+            margin: 1em 0;
+            color: #666;
+        }
+        .markdown-content strong {
+            font-weight: bold;
+        }
+        .markdown-content em {
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <v-app>
+            <v-app-bar color="primary" prominent>
+                <v-app-bar-title>
+                    <v-icon icon="mdi-chart-line" class="mr-2"></v-icon>
+                    Economic Letter Insights
+                </v-app-bar-title>
+            </v-app-bar>
+            
+            <v-main>
+                <v-container fluid>
+                    <router-view></router-view>
+                </v-container>
+            </v-main>
+        </v-app>
+    </div>
+
+    <!-- Letter List Template -->
+    <template id="letter-list-template">
+        <div>
+            <v-row class="mb-4">
+                <v-col>
+                    <h1 class="text-h4 mb-2">FRBSF Economic Letters</h1>
+                    <p class="text-subtitle-1">Browse and analyze Federal Reserve Bank of San Francisco economic letters</p>
+                </v-col>
+            </v-row>
+            
+            <v-row class="mb-4">
+                <v-col>
+                    <v-btn 
+                        color="primary" 
+                        @click="fetchNew" 
+                        :loading="fetchingNew"
+                        class="mr-2"
+                    >
+                        <v-icon left>mdi-refresh</v-icon>
+                        Fetch New Letters
+                    </v-btn>
+                    <v-btn 
+                        color="secondary" 
+                        @click="loadMore" 
+                        :loading="loadingMore"
+                        :disabled="!hasMore"
+                    >
+                        <v-icon left>mdi-download</v-icon>
+                        Load More
+                    </v-btn>
+                </v-col>
+            </v-row>
+            
+            <v-alert v-if="message" :type="messageType" dismissible @click:close="message = ''">
+                {{ message }}
+            </v-alert>
+            
+            <v-progress-linear v-if="loading" indeterminate color="primary"></v-progress-linear>
+            
+            <v-row v-if="!loading && letters.length === 0">
+                <v-col>
+                    <v-alert type="info">
+                        No letters found. Click "Fetch New Letters" to load economic letters.
+                    </v-alert>
+                </v-col>
+            </v-row>
+            
+            <v-row>
+                <v-col 
+                    v-for="letter in letters" 
+                    :key="letter.id" 
+                    cols="12" 
+                    md="6" 
+                    lg="4"
+                >
+                    <v-card 
+                        class="letter-card" 
+                        @click="goToLetter(letter.id)"
+                        elevation="2"
+                    >
+                        <v-card-title>{{ letter.title }}</v-card-title>
+                        <v-card-subtitle>
+                            <v-icon size="small" class="mr-1">mdi-calendar</v-icon>
+                            {{ letter.publication_date }}
+                        </v-card-subtitle>
+                        <v-card-text v-if="letter.summary">
+                            {{ letter.summary.substring(0, 150) }}{{ letter.summary.length > 150 ? '...' : '' }}
+                        </v-card-text>
+                        <v-card-actions>
+                            <v-btn color="primary" variant="text">
+                                Read & Analyze
+                                <v-icon right>mdi-arrow-right</v-icon>
+                            </v-btn>
+                        </v-card-actions>
+                    </v-card>
+                </v-col>
+            </v-row>
+        </div>
+    </template>
+
+    <!-- Letter Detail Template -->
+    <template id="letter-detail-template">
+        <div>
+            <v-btn 
+                @click="goBack" 
+                variant="text" 
+                class="mb-4"
+            >
+                <v-icon left>mdi-arrow-left</v-icon>
+                Back to List
+            </v-btn>
+            
+            <v-progress-linear v-if="loading" indeterminate color="primary"></v-progress-linear>
+            
+            <div v-if="!loading && letter">
+                <v-card class="mb-4">
+                    <v-card-title class="text-h4">{{ letter.title }}</v-card-title>
+                    <v-card-subtitle>
+                        <v-icon size="small" class="mr-1">mdi-calendar</v-icon>
+                        {{ letter.publication_date }}
+                    </v-card-subtitle>
+                    <v-card-text>
+                        <v-btn 
+                            :href="letter.url" 
+                            target="_blank" 
+                            color="primary" 
+                            variant="outlined"
+                            class="mb-4"
+                        >
+                            <v-icon left>mdi-open-in-new</v-icon>
+                            View Original on FRBSF
+                        </v-btn>
+                        
+                        <div class="mt-4" style="white-space: pre-wrap;">{{ letter.content }}</div>
+                    </v-card-text>
+                </v-card>
+                
+                <v-card class="mb-4">
+                    <v-card-title>Ask a Question</v-card-title>
+                    <v-card-text>
+                        <v-textarea
+                            v-model="newQuestion"
+                            label="What would you like to know about this letter?"
+                            rows="3"
+                            variant="outlined"
+                            :disabled="submitting"
+                        ></v-textarea>
+                        <v-btn 
+                            color="primary" 
+                            @click="submitQuestion"
+                            :loading="submitting"
+                            :disabled="!newQuestion.trim()"
+                        >
+                            <v-icon left>mdi-send</v-icon>
+                            Ask Question
+                        </v-btn>
+                    </v-card-text>
+                </v-card>
+                
+                <div v-if="questions.length > 0">
+                    <h2 class="text-h5 mb-4">Previous Questions & Answers</h2>
+                    
+                    <v-card 
+                        v-for="q in questions" 
+                        :key="q.id" 
+                        class="question-card"
+                    >
+                        <v-card-title>
+                            <v-icon left color="primary">mdi-help-circle</v-icon>
+                            {{ q.question }}
+                        </v-card-title>
+                        <v-card-subtitle>
+                            <v-icon size="small" class="mr-1">mdi-clock</v-icon>
+                            {{ q.created_at }}
+                        </v-card-subtitle>
+                        <v-card-text>
+                            <div class="markdown-content" v-html="renderMarkdown(q.answer)"></div>
+                        </v-card-text>
+                        <v-card-actions>
+                            <v-spacer></v-spacer>
+                            <v-btn 
+                                color="error" 
+                                variant="text"
+                                @click="deleteQuestion(q.id)"
+                            >
+                                <v-icon left>mdi-delete</v-icon>
+                                Delete
+                            </v-btn>
+                        </v-card-actions>
+                    </v-card>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Vue 3 -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.0/dist/vue.global.prod.js"></script>
+    <!-- Vuetify -->
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.js"></script>
+    <!-- Vue Router -->
+    <script src="https://cdn.jsdelivr.net/npm/vue-router@4.2.5/dist/vue-router.global.prod.js"></script>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.0.0/marked.min.js"></script>
+
+    <script>
+        const { createApp } = Vue;
+        const { createVuetify } = Vuetify;
+        const { createRouter, createWebHashHistory } = VueRouter;
+
+        // API base URL
+        const API_BASE = '/api';
+
+        // Letter List Component
+        const LetterList = {
+            template: '#letter-list-template',
+            data() {
+                return {
+                    letters: [],
+                    loading: false,
+                    fetchingNew: false,
+                    loadingMore: false,
+                    hasMore: false,
+                    currentPage: 0,
+                    message: '',
+                    messageType: 'info'
+                };
+            },
+            mounted() {
+                this.loadLetters();
+            },
+            methods: {
+                async loadLetters() {
+                    this.loading = true;
+                    try {
+                        const response = await fetch(`${API_BASE}/letters?limit=20&offset=0`);
+                        const data = await response.json();
+                        this.letters = data.letters;
+                        this.hasMore = data.has_more;
+                        this.currentPage = 1;
+                    } catch (error) {
+                        this.showMessage('Error loading letters: ' + error.message, 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async fetchNew() {
+                    this.fetchingNew = true;
+                    try {
+                        const response = await fetch(`${API_BASE}/letters/fetch-new`, {
+                            method: 'POST'
+                        });
+                        const data = await response.json();
+                        this.showMessage(data.message, data.new_count > 0 ? 'success' : 'info');
+                        if (data.new_count > 0) {
+                            await this.loadLetters();
+                        }
+                    } catch (error) {
+                        this.showMessage('Error fetching new letters: ' + error.message, 'error');
+                    } finally {
+                        this.fetchingNew = false;
+                    }
+                },
+                async loadMore() {
+                    this.loadingMore = true;
+                    try {
+                        const response = await fetch(`${API_BASE}/letters/fetch-more`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ current_page: this.currentPage })
+                        });
+                        const data = await response.json();
+                        
+                        // Always increment page counter after fetching
+                        this.currentPage++;
+                        
+                        this.showMessage(data.message, data.new_count > 0 ? 'success' : 'info');
+                        
+                        // Reload letters if any were added
+                        if (data.new_count > 0) {
+                            await this.loadLetters();
+                        }
+                        
+                        // Disable if no more pages available (indicated by has_more in response)
+                        if (data.message.includes('No more letters available')) {
+                            this.hasMore = false;
+                        }
+                    } catch (error) {
+                        this.showMessage('Error loading more letters: ' + error.message, 'error');
+                    } finally {
+                        this.loadingMore = false;
+                    }
+                },
+                goToLetter(id) {
+                    this.$router.push(`/letter/${id}`);
+                },
+                showMessage(msg, type) {
+                    this.message = msg;
+                    this.messageType = type;
+                }
+            }
+        };
+
+        // Letter Detail Component
+        const LetterDetail = {
+            template: '#letter-detail-template',
+            data() {
+                return {
+                    letter: null,
+                    questions: [],
+                    newQuestion: '',
+                    loading: false,
+                    submitting: false
+                };
+            },
+            mounted() {
+                this.loadLetter();
+            },
+            methods: {
+                async loadLetter() {
+                    this.loading = true;
+                    try {
+                        const id = this.$route.params.id;
+                        const response = await fetch(`${API_BASE}/letters/${id}`);
+                        if (!response.ok) {
+                            throw new Error('Letter not found');
+                        }
+                        const data = await response.json();
+                        this.letter = data.letter;
+                        this.questions = data.questions;
+                    } catch (error) {
+                        alert('Error loading letter: ' + error.message);
+                        this.$router.push('/');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async submitQuestion() {
+                    if (!this.newQuestion.trim()) return;
+                    
+                    this.submitting = true;
+                    try {
+                        const id = this.$route.params.id;
+                        const response = await fetch(`${API_BASE}/letters/${id}/questions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ question: this.newQuestion })
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to submit question');
+                        }
+                        
+                        const data = await response.json();
+                        
+                        // Add new question to list
+                        this.questions.push({
+                            id: data.question_id,
+                            letter_id: parseInt(id),
+                            question: this.newQuestion,
+                            answer: data.answer,
+                            created_at: data.timestamp
+                        });
+                        
+                        this.newQuestion = '';
+                    } catch (error) {
+                        alert('Error submitting question: ' + error.message);
+                    } finally {
+                        this.submitting = false;
+                    }
+                },
+                async deleteQuestion(questionId) {
+                    if (!confirm('Are you sure you want to delete this question?')) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await fetch(`${API_BASE}/questions/${questionId}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to delete question');
+                        }
+                        
+                        // Remove from list
+                        this.questions = this.questions.filter(q => q.id !== questionId);
+                    } catch (error) {
+                        alert('Error deleting question: ' + error.message);
+                    }
+                },
+                goBack() {
+                    this.$router.push('/');
+                },
+                renderMarkdown(text) {
+                    if (!text) return '';
+                    return marked.parse(text);
+                }
+            }
+        };
+
+        // Router
+        const routes = [
+            { path: '/', component: LetterList },
+            { path: '/letter/:id', component: LetterDetail }
+        ];
+
+        const router = createRouter({
+            history: createWebHashHistory(),
+            routes
+        });
+
+        // Vuetify
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'light',
+                themes: {
+                    light: {
+                        colors: {
+                            primary: '#1976D2',
+                            secondary: '#424242',
+                            accent: '#82B1FF',
+                            error: '#FF5252',
+                            info: '#2196F3',
+                            success: '#4CAF50',
+                            warning: '#FFC107'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Create and mount app
+        const app = createApp({});
+        app.use(router);
+        app.use(vuetify);
+        app.mount('#app');
+    </script>
+</body>
+</html>
